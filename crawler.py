@@ -172,7 +172,7 @@ class WebsiteCrawler:
             fpath = output_html_dirpath+file_name+'.html'
             result = self.crawling_controller(fpath, url)
             end = timer()
-            total_time =  end - start
+            total_time = end - start
             output_result = {
                 'domain': domain,
                 'url': url,
@@ -197,8 +197,9 @@ class WebsiteCrawler:
 @click.option('--use_caching', default=False, help='Should crawler use html cased result')
 @click.option('--parser', type=click.Choice(['BeautifulSoup', 'trafilatura']))
 @click.option('--html_downloader_type', default='get', type=click.Choice(['get', 'selenium']))
+@click.option('--crawl_first_n_website', default=-1)
 
-def start_crawler(nprocesses, input_file, output_file, website_column, use_caching, parser, html_downloader_type):
+def start_crawler(nprocesses, input_file, output_file, website_column, use_caching, parser, html_downloader_type, crawl_first_n_website):
     try:
         start = timer()
         if input_file.endswith('.csv'):
@@ -207,7 +208,8 @@ def start_crawler(nprocesses, input_file, output_file, website_column, use_cachi
             df = pd.read_excel(input_file)
         else:
             raise Exception(':( Please check input file format!')
-
+        if crawl_first_n_website>-1:
+            df = df[0:crawl_first_n_website]
         df[website_column] = df[website_column].str.strip()
         seeds = df.to_dict('records')
         print(f'Total Input unique seeds:{len(seeds)}')
