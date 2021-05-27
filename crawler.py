@@ -98,23 +98,27 @@ class WebsiteCrawler:
             soup = BeautifulSoup(text, 'html.parser')
             texts = soup.findAll(text=True)
             visible_texts = filter(self.tag_visible, texts)
-            return u" ".join(t.strip() for t in visible_texts)
+            return text, u" ".join(t.strip() for t in visible_texts)
         except:
             traceback.print_exc()
-            return None
+            return None,None
 
     def TrafilaturaParser(self, text):
         try:
-            return extract(text)
+            return text, extract(text)
         except:
             traceback.print_exc()
-            return None
+            return None, None
 
     def save_html(self, fpath, text):
-        if text:
-            file = open(fpath, "w")
-            file.write(text)
-            file.close()
+        try:
+            if text:
+                file = open(fpath, "w")
+                file.write(text)
+                file.close()
+        except:
+            print('Failed to save text')
+            traceback.print_exc()
 
     def html_parser(self, html):
         if self.parser == 'BeautifulSoup':
@@ -122,7 +126,7 @@ class WebsiteCrawler:
         if self.parser == 'trafilatura':
             return self.TrafilaturaParser(html)
         else:
-            return 'no parser available'
+            return 'no parser available', ''
 
     def html_downloder(self, url, Crawler_Type):
         try:
@@ -134,16 +138,33 @@ class WebsiteCrawler:
                     browser.close()
                     return -1, html
                 else:
-                    response = requests.get(url, headers=request_headers, verify=False, timeout=15)
-                    return response.status_code, response.text
-            return None
+                    try:
+                        response = requests.get(url, headers=request_headers, verify=False, timeout=15)
+                        response.raise_for_status()
+                        return response.status_code, response.text
+                    except requests.exceptions.HTTPError as errh:
+                        error = f'"Http Error:", {errh}'
+                        return error, ''
+                    except requests.exceptions.ConnectionError as errc:
+                        error = f'"Error Connecting:", {errc}'
+                        return error, ''
+                    except requests.exceptions.Timeout as errt:
+                        error = f'"Timeout Error:", {errt}'
+                        return error, ''
+                    except requests.exceptions.RequestException as err:
+                        error = f'"OOps: Something Else:", {err}'
+                        return error, ''
+            else:
+                return None, None
         except:
             traceback.print_exc()
             return None
 
     def crawling_controller(self, fpath, url):
-        result = {'status_code': '', 'homepage_text': ''}
+        result = {'status_code': '', 'parsed_text': '', 'original_text': ''}
         status_code = None
+        parsed_text = None
+        original_text = None
         if self.use_caching:
             if Path(fpath).is_file():
                 with open(fpath, 'r') as f2:
@@ -155,11 +176,13 @@ class WebsiteCrawler:
             status_code, html = self.html_downloder(url, self.html_downloader_type)
             self.save_html(fpath, html)
         if html:
-            homepage_text = self.html_parser(html)  # Change parse here
-            if status_code:
-                result['status_code'] = status_code
-            if homepage_text:
-                result['homepage_text'] = homepage_text
+            original_text, parsed_text = self.html_parser(html)  # Change parse here
+        if status_code:
+            result['status_code'] = status_code
+        if parsed_text:
+            result['parsed_text'] = parsed_text
+        if original_text:
+            result['original_text'] = original_text
         return result
 
     def get_website_info(self, obj):
@@ -177,7 +200,8 @@ class WebsiteCrawler:
                 'domain': domain,
                 'url': url,
                 'status_code': result['status_code'],
-                'homepage_text': result['homepage_text'],
+                'parsed_text': result['parsed_text'],
+                'original_text': result['original_text'],
                 'parser': self.parser,
                 'html_downloader': self.html_downloader_type,
                 'time_taken': total_time
