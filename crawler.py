@@ -164,17 +164,23 @@ class WebsiteCrawler:
 
     def get_website_info(self, obj):
         try:
+            start = timer()
             url = obj['website']
             url = self.prepare_url(url)             # Add protocol if missing
             file_name = self.prepare_file_name(url)  # Use to cache file for reuse
             domain = self.extract_domain(url)
             fpath = output_html_dirpath+file_name+'.html'
             result = self.crawling_controller(fpath, url)
+            end = timer()
+            total_time =  end - start
             output_result = {
                 'domain': domain,
                 'url': url,
                 'status_code': result['status_code'],
                 'homepage_text': result['homepage_text'],
+                'parser': self.parser,
+                'html_downloader': self.html_downloader_type,
+                'time_taken': total_time
             }
             output_df = pd.DataFrame([output_result])
             output_df.to_csv(output_text_dirpath+str(file_name)+'.csv', index=False)
