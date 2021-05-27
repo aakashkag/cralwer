@@ -22,12 +22,12 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 request_headers = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.47 Safari/537.36'
 }
-
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
 chromeOptions = Options()
 chromeOptions.headless = True
+from trafilatura import extract
 
 #  Change here output directory path
 dir_path = str(pathlib.Path().absolute())
@@ -103,6 +103,13 @@ class WebsiteCrawler:
             traceback.print_exc()
             return None
 
+    def TrafilaturaParser(self, text):
+        try:
+            return extract(text)
+        except:
+            traceback.print_exc()
+            return None
+
     def save_html(self, fpath, text):
         if text:
             file = open(fpath, "w")
@@ -112,6 +119,8 @@ class WebsiteCrawler:
     def html_parser(self, html):
         if self.parser == 'BeautifulSoup':
             return self.BeautifulSoupParser(html)
+        if self.parser == 'trafilatura':
+            return self.TrafilaturaParser(html)
         else:
             return 'no parser available'
 
@@ -180,7 +189,7 @@ class WebsiteCrawler:
 @click.option('--output_file', help='Output file name')
 @click.option('--website_column', default='website', help='input column name')
 @click.option('--use_caching', default=False, help='Should crawler use html cased result')
-@click.option('--parser', type=click.Choice(['BeautifulSoup', 'bs']))
+@click.option('--parser', type=click.Choice(['BeautifulSoup', 'trafilatura']))
 @click.option('--html_downloader_type', default='get', type=click.Choice(['get', 'selenium']))
 
 def start_crawler(nprocesses, input_file, output_file, website_column, use_caching, parser, html_downloader_type):
@@ -213,4 +222,4 @@ def start_crawler(nprocesses, input_file, output_file, website_column, use_cachi
 if __name__ == '__main__':
     start_crawler()
 
-# python3 crawler.py --input_file text_input.csv --output_file testoutput --nprocesses 10 --website_column website --use_caching --parser BeautifulSoup
+# python3 crawler.py --input_file text_input.csv --output_file testoutput --nprocesses 10 --website_column website --parser BeautifulSoup
