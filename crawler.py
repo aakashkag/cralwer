@@ -254,4 +254,4 @@ def start_crawler(nprocesses, input_file, output_file, website_column, use_cachi
 if __name__ == '__main__':
     start_crawler()
 
-# python3 crawler.py --input_file text_input.csv --output_file testoutput --nprocesses 10 --website_column website --parser BeautifulSoup
+#  python3 crawler.py --input_file websites.csv --output_file trafilatura_output --nprocesses 10 --website_column website --parser trafilatura --crawl_first_n_website 100
