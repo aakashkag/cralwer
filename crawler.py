@@ -143,6 +143,7 @@ class WebsiteCrawler:
             return 'no parser available', ''
 
     def html_downloder(self, url, Crawler_Type):
+        result = {'response_code': '', 'response_error': '', 'text': ''}
         try:
             if url:
                 if Crawler_Type == 'selenium':
@@ -150,7 +151,9 @@ class WebsiteCrawler:
                     browser.get(url)
                     html = browser.page_source
                     browser.close()
-                    return -1, html
+                    result['code'] = -1
+                    result['text'] = html
+                    return result
                 else:
                     try:
                         response = requests.get(url, headers=request_headers, verify=False, timeout=15)
@@ -158,41 +161,58 @@ class WebsiteCrawler:
                         return response.status_code, response.text
                     except requests.exceptions.HTTPError as errh:
                         error = f'"Http Error:", {errh}'
-                        return error, ''
+                        result['code'] = response.status_code
+                        result['response_error'] = error
                     except requests.exceptions.ConnectionError as errc:
                         error = f'"Error Connecting:", {errc}'
-                        return error, ''
+                        result['code'] = response.status_code
+                        result['response_error'] = error
+
                     except requests.exceptions.Timeout as errt:
                         error = f'"Timeout Error:", {errt}'
-                        return error, ''
+                        result['code'] = response.status_code
+                        result['response_error'] = error
                     except requests.exceptions.RequestException as err:
                         error = f'"OOps: Something Else:", {err}'
-                        return error, ''
+                        result['code'] = response.status_code
+                        result['response_error'] = error
+                    return result
             else:
-                return None, None
+                return result
         except:
             traceback.print_exc()
-            return None
+            return result
 
     def crawling_controller(self, fpath, url):
-        result = {'status_code': '', 'parsed_text': '', 'original_text': ''}
+        result = {'status_code': '', 'parsed_text': '', 'original_text': '', 'response_error':''}
         status_code = None
         parsed_text = None
         original_text = None
+        response_error = None
         if self.use_caching:
             if Path(fpath).is_file():
                 with open(fpath, 'r') as f2:
                     html = f2.read()
             else:
-                status_code, html = self.html_downloder(url, self.html_downloader_type)
+                result = {'response_code': '', 'response_error': '', 'text': ''}
+                html_downloaded_res = self.html_downloder(url, self.html_downloader_type)
+                status_code = html_downloaded_res['response_code']
+                response_error = html_downloaded_res['response_error']
+                html = html_downloaded_res['text']
                 self.save_html(fpath, html)
         else:
-            status_code, html = self.html_downloder(url, self.html_downloader_type)
+            html_downloaded_res = self.html_downloder(url, self.html_downloader_type)
+            status_code = html_downloaded_res['response_code']
+            response_error = html_downloaded_res['response_error']
+            html = html_downloaded_res['text']
+            self.save_html(fpath, html)
             self.save_html(fpath, html)
         if html:
             original_text, parsed_text = self.html_parser(html)  # Change parse here
         if status_code:
             result['status_code'] = status_code
+        if response_error:
+            result['response_error'] = response_error
         if parsed_text:
             result['parsed_text'] = parsed_text
         if original_text:
@@ -214,6 +234,7 @@ class WebsiteCrawler:
                 'domain': domain,
                 'url': url,
                 'status_code': result['status_code'],
+                'response_error': result['response_error'],
                 'parsed_text': result['parsed_text'],
                 'original_text': result['original_text'],
                 'parser': self.parser,
