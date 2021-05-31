@@ -143,7 +143,7 @@ class WebsiteCrawler:
             return 'no parser available', ''
 
     def html_downloder(self, url, Crawler_Type):
-        result = {'response_code': '', 'response_error': '', 'text': ''}
+        result = {'response_code': '', 'response_error': '', 'text': '', 'redirect_history': '', 'target_url':''}
         try:
             if url:
                 if Crawler_Type == 'selenium':
@@ -158,6 +158,11 @@ class WebsiteCrawler:
                     try:
                         response = requests.get(url, headers=request_headers, verify=False, timeout=15)
                         if response:
+                            history = []
+                            for resp in response.history:
+                                history.append(resp.url)
+                            result['target_url'] = response.url
+                            result['redirect_history'] = ','.join(history)
                             result['response_code'] = response.status_code
                             result['text'] = response.text
                         response.raise_for_status()
@@ -181,11 +186,13 @@ class WebsiteCrawler:
             return result
 
     def crawling_controller(self, fpath, url):
-        result = {'status_code': '', 'parsed_text': '', 'original_text': '', 'response_error':''}
+        result = {'status_code': '', 'parsed_text': '', 'original_text': '', 'response_error': '', 'redirect_history': '', 'target_url': ''}
         status_code = None
         parsed_text = None
         original_text = None
         response_error = None
+        redirect_history = None
+        target_url = None
         if self.use_caching:
             if Path(fpath).is_file():
                 with open(fpath, 'r') as f2:
@@ -195,6 +202,8 @@ class WebsiteCrawler:
                 status_code = html_downloaded_res['response_code']
                 response_error = html_downloaded_res['response_error']
                 html = html_downloaded_res['text']
+                redirect_history = html_downloaded_res['redirect_history']
+                target_url = html_downloaded_res['target_url']
                 self.save_html(fpath, html)
         else:
             html_downloaded_res = self.html_downloder(url, self.html_downloader_type)
@@ -212,6 +221,10 @@ class WebsiteCrawler:
             result['parsed_text'] = parsed_text
         if original_text:
             result['original_text'] = original_text
+        if redirect_history:
+            result['redirect_history'] = redirect_history
+        if target_url:
+            result['target_url'] = target_url
         return result
 
     def get_website_info(self, obj):
@@ -234,7 +247,9 @@ class WebsiteCrawler:
                 'original_text': result['original_text'],
                 'parser': self.parser,
                 'html_downloader': self.html_downloader_type,
-                'time_taken': total_time
+                'time_taken': total_time,
+                'target_url': result['target_url'],
+                'redirect_history': result['redirect_history']
             }
             output_df = pd.DataFrame([output_result])
             output_df.to_csv(output_text_dirpath+str(file_name)+'.csv', index=False)
