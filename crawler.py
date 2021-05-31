@@ -157,7 +157,9 @@ class WebsiteCrawler:
                 else:
                     try:
                         response = requests.get(url, headers=request_headers, verify=False, timeout=15)
-                        result['code'] = response.status_code
+                        if response:
+                            result['response_code'] = response.status_code
+                            result['text'] = response.text
                         response.raise_for_status()
                     except requests.exceptions.HTTPError as errh:
                         error = f'"Http Error:", {errh}'
@@ -189,7 +191,6 @@ class WebsiteCrawler:
                 with open(fpath, 'r') as f2:
                     html = f2.read()
             else:
-                result = {'response_code': '', 'response_error': '', 'text': ''}
                 html_downloaded_res = self.html_downloder(url, self.html_downloader_type)
                 status_code = html_downloaded_res['response_code']
                 response_error = html_downloaded_res['response_error']
@@ -200,7 +201,6 @@ class WebsiteCrawler:
             status_code = html_downloaded_res['response_code']
             response_error = html_downloaded_res['response_error']
             html = html_downloaded_res['text']
-            self.save_html(fpath, html)
             self.save_html(fpath, html)
         if html:
             original_text, parsed_text = self.html_parser(html)  # Change parse here
