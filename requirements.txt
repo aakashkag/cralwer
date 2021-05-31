@@ -9,3 +9,4 @@ urllib3==1.25.6
 xlrd==1.2.0
 selenium
 trafilatura==0.8.2
+dragnet==2.0.4
