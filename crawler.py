@@ -210,6 +210,8 @@ class WebsiteCrawler:
             status_code = html_downloaded_res['response_code']
             response_error = html_downloaded_res['response_error']
             html = html_downloaded_res['text']
+            redirect_history = html_downloaded_res['redirect_history']
+            target_url = html_downloaded_res['target_url']
             self.save_html(fpath, html)
         if html:
             original_text, parsed_text = self.html_parser(html)  # Change parse here
