@@ -157,24 +157,19 @@ class WebsiteCrawler:
                 else:
                     try:
                         response = requests.get(url, headers=request_headers, verify=False, timeout=15)
+                        result['code'] = response.status_code
                         response.raise_for_status()
-                        return response.status_code, response.text
                     except requests.exceptions.HTTPError as errh:
                         error = f'"Http Error:", {errh}'
-                        result['code'] = response.status_code
                         result['response_error'] = error
                     except requests.exceptions.ConnectionError as errc:
                         error = f'"Error Connecting:", {errc}'
-                        result['code'] = response.status_code
                         result['response_error'] = error
-
                     except requests.exceptions.Timeout as errt:
                         error = f'"Timeout Error:", {errt}'
-                        result['code'] = response.status_code
                         result['response_error'] = error
                     except requests.exceptions.RequestException as err:
                         error = f'"OOps: Something Else:", {err}'
-                        result['code'] = response.status_code
                         result['response_error'] = error
                     return result
             else:
