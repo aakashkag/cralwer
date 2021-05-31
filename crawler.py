@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from warnings import simplefilter
+simplefilter(action='ignore', category=DeprecationWarning)
 import click
 import pandas as pd
 import requests
@@ -28,6 +30,7 @@ from selenium.webdriver.chrome.options import Options
 chromeOptions = Options()
 chromeOptions.headless = True
 from trafilatura import extract
+from dragnet import extract_content, extract_content_and_comments
 
 #  Change here output directory path
 dir_path = str(pathlib.Path().absolute())
@@ -70,10 +73,12 @@ class WebsiteCrawler:
                     url = 'http://www.'+url
                 else:
                     url = 'http://'+url
-            url_ext = tldextract.extract(url)
-            dom_url = url_ext.domain + "." + url_ext.suffix
-            dom_url = 'http://www.'+dom_url
-            return dom_url
+                url_ext = tldextract.extract(url)
+                dom_url = url_ext.domain + "." + url_ext.suffix
+                dom_url = 'http://www.'+dom_url
+                return dom_url
+            else:
+                return url
         except:
             traceback.print_exc()
             return url
@@ -110,6 +115,13 @@ class WebsiteCrawler:
             traceback.print_exc()
             return None, None
 
+    def DragnetParser(self, text):
+        try:
+            return text, extract_content(text)
+        except:
+            traceback.print_exc()
+            return None, None
+
     def save_html(self, fpath, text):
         try:
             if text:
@@ -123,8 +135,10 @@ class WebsiteCrawler:
     def html_parser(self, html):
         if self.parser == 'BeautifulSoup':
             return self.BeautifulSoupParser(html)
-        if self.parser == 'trafilatura':
+        elif self.parser == 'trafilatura':
             return self.TrafilaturaParser(html)
+        elif self.parser == 'dragnet':
+            return self.DragnetParser(html)
         else:
             return 'no parser available', ''
 
@@ -219,7 +233,7 @@ class WebsiteCrawler:
 @click.option('--output_file', help='Output file name')
 @click.option('--website_column', default='website', help='input column name')
 @click.option('--use_caching', default=False, help='Should crawler use html cased result')
-@click.option('--parser', type=click.Choice(['BeautifulSoup', 'trafilatura']))
+@click.option('--parser', type=click.Choice(['BeautifulSoup', 'trafilatura', 'dragnet']))
 @click.option('--html_downloader_type', default='get', type=click.Choice(['get', 'selenium']))
 @click.option('--crawl_first_n_website', default=-1)
 
