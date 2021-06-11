@@ -233,7 +233,7 @@ class WebsiteCrawler:
         try:
             start = timer()
             url = obj['website']
-            url = self.prepare_url(url)             # Add protocol if missing
+            #url = self.prepare_url(url)             # Add protocol if missing
             file_name = self.prepare_file_name(url)  # Use to cache file for reuse
             domain = self.extract_domain(url)
             fpath = output_html_dirpath+file_name+'.html'
