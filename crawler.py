@@ -253,12 +253,15 @@ class WebsiteCrawler:
                 'target_url': result['target_url'],
                 'redirect_history': result['redirect_history']
             }
-            output_df = pd.DataFrame([output_result])
-            output_df.to_csv(output_text_dirpath+str(file_name)+'.csv', index=False)
+            for key in obj.keys():
+                if key not in output_result:
+                    output_result[key] = obj[key]
+            #output_df = pd.DataFrame([output_result])
+            #output_df.to_csv(output_text_dirpath+str(file_name)+'.csv', index=False)
             return output_result
         except:
-            return obj
             traceback.print_exc()
+            return obj
 
 @click.command()
 @click.option('--nprocesses', default=10, help='Mention number of processes to run in parallel(By default 10 processes)')
