@@ -41,13 +41,57 @@ Path(output_html_dirpath).mkdir(parents=True, exist_ok=True)  # Create dir if no
 Path(output_text_dirpath).mkdir(parents=True, exist_ok=True)  # Create dir if not exists
 Path(output_final_dirpath).mkdir(parents=True, exist_ok=True)  # Create dir if not exists
 
+importent_link_footprint_dict = {
+    'about_us_link': {
+        'text_keywords': [
+            'product', 'products', 'product-category', 'our-products', 'our-product', 'our product', 'our products',
+            'product-tag'
+        ],
+        'link_tokens': [
+            'allproduct', 'allproducts', 'product', 'products', 'products.html', 'product.html', 'product-category',
+            'our-products', 'our-product', 'product-tag'
+        ],
+        'must_keyword': 'about'
+    },
+    'service_link': {
+        'text_keywords': [
+            'services', 'our-services', 'products-and-services', 'our products', 'product-tag'
+        ],
+        'link_tokens': [
+            'service', 'services', 'services.html', 'our-services'
+        ],
+        'must_keyword': 'service'
+    },
+    'product_link': {
+        'text_keywords': [
+            'product', 'products', 'product-category', 'our-products', 'our-product', 'our product', 'our products',
+            'product-tag'
+        ],
+        'link_tokens': [
+            'allproduct', 'allproducts', 'product', 'products', 'products.html', 'product.html', 'product-category',
+            'our-products', 'our-product', 'product-tag'
+        ],
+        'must_keyword': 'product'
+    },
+    'overview_link': {
+        'text_keywords': [
+            'overview'
+        ],
+        'link_tokens': [
+            'corporate-overview', 'overview', 'overview.html', 'overview.php', 'company-overview'
+        ],
+        'must_keyword': 'overview'
+    }
+}
+
 class WebsiteCrawler:
 
-    def __init__(self, use_caching, parser, html_downloader_type):
+    def __init__(self, use_caching, parser, html_downloader_type, crawl_important_link):
         self.all_results = []
         self.use_caching = use_caching
         self.parser = parser
         self.html_downloader_type = html_downloader_type
+        self.crawl_important_link = crawl_important_link
         pass
 
     def prepare_file_name(self, text):
@@ -68,6 +112,7 @@ class WebsiteCrawler:
 
     def prepare_url(self, url):
         try:
+            url = url.lower()
             if not((url.startswith('http://',0,7)) or (url.startswith('https://',0,8))):
                 if not(url.startswith('www.',0,4)):
                     url = 'http://www.'+url
@@ -82,6 +127,48 @@ class WebsiteCrawler:
         except:
             traceback.print_exc()
             return url
+
+    def relative_to_absolute(self, url, website):
+        try:
+            return urljoin(website, url)
+        except:
+            traceback.print_exc()
+            return url
+
+    def get_links(self, html, domain):
+        result = {
+            'navigation_links': [], 'internal_links': []
+        }
+        try:
+            url = self.prepare_url(domain)
+            internal_links_list = []
+            processed = []
+            # Case 2. Extract all links
+            soup = BeautifulSoup(html, 'html.parser')
+            for line in soup.find_all('a'):
+                link = line.get('href')
+                link_text = line.text
+                if not link:
+                    continue
+                else:
+                    full_link = link
+                    if not (link.startswith('http:') or link.startswith('https:') or link.startswith('www.')):
+                        full_link = self.relative_to_absolute(full_link, url)
+
+                    if (full_link not in processed) and ('www' in full_link or 'http' in full_link):
+                        processed.append(full_link)
+
+                    if domain not in full_link:  # It's External links
+                        full_link = full_link.lower()
+                    else:
+                        # Link belong to same website
+                        if '.' in full_link and (full_link not in internal_links_list):
+                            internal_links_list.append({'link': full_link, 'text': link_text.lower()})
+            result['internal_links'] = internal_links_list
+            return result
+        except:
+            traceback.print_exc()
+            return result
 
     def tag_visible(self, element):
         if element.parent.name in ['style', 'script', 'head', 'title', 'meta', '[document]']:
@@ -185,8 +272,27 @@ class WebsiteCrawler:
             traceback.print_exc()
             return result
 
-    def crawling_controller(self, fpath, url):
-        result = {'status_code': '', 'parsed_text': '', 'original_text': '', 'response_error': '', 'redirect_history': '', 'target_url': ''}
+    def importent_link_identifier(self, links_array, important_link_result):
+        try:
+            for link_obj in links_array:
+                #print('link_obj-->',link_obj)
+                for key in importent_link_footprint_dict.keys():
+                    # if already not predicted
+                    if important_link_result[key]['text'] == '':
+                        is_selected_link = True if link_obj['text'] in importent_link_footprint_dict[key]['text_keywords'] else False
+                        if is_selected_link:
+                            link_tokens = link_obj['link'].split('/')  # breaks response into words
+                            if any(s in importent_link_footprint_dict[key]['link_tokens'] for s in link_tokens) and (importent_link_footprint_dict[key]['must_keyword'] in link_obj['text']):
+                                important_link_result[key]['link'] = link_obj['link']
+                                important_link_result[key]['text'] = link_obj['text']
+                                break
+            return important_link_result
+        except:
+            traceback.print_exc()
+            return important_link_result
+
+    def crawling_controller(self, fpath, url, domain):
+        result = {'status_code': '', 'parsed_text': '', 'original_text': '', 'response_error': '', 'redirect_history': '', 'target_url': '', 'importent_links_onj':'', 'html': None}
         status_code = None
         parsed_text = None
         original_text = None
@@ -215,6 +321,7 @@ class WebsiteCrawler:
             self.save_html(fpath, html)
         if html:
             original_text, parsed_text = self.html_parser(html)  # Change parse here
+            result['html'] = html
         if status_code:
             result['status_code'] = status_code
         if response_error:
@@ -231,13 +338,20 @@ class WebsiteCrawler:
 
     def get_website_info(self, obj):
         try:
+            important_link_result = {
+                'about_us_link': {'link': None, 'text': ''},
+                'service_link': {'link': None, 'text': ''},
+                'product_link': {'link': None, 'text': ''},
+                'overview_link': {'link': None, 'text': ''}
+            }
+
             start = timer()
             url = obj['website']
             url = self.prepare_url(url)             # Add protocol if missing
             file_name = self.prepare_file_name(url)  # Use to cache file for reuse
             domain = self.extract_domain(url)
             fpath = output_html_dirpath+file_name+'.html'
-            result = self.crawling_controller(fpath, url)
+            result = self.crawling_controller(fpath, url, domain)
             end = timer()
             total_time = end - start
             output_result = {
@@ -253,6 +367,18 @@ class WebsiteCrawler:
                 'target_url': result['target_url'],
                 'redirect_history': result['redirect_history']
             }
+            #print('self.crawl_important_link===============>',self.crawl_important_link)
+            if self.crawl_important_link and result['html']:
+                all_links_obj = self.get_links(result['html'], domain)
+                # Get important link
+                important_link_result = self.importent_link_identifier(all_links_obj['internal_links'], important_link_result)
+                for key in important_link_result.keys():
+                    output_result[key] = important_link_result[key]['link']
+                    output_result[key + '_text'] = important_link_result[key]['text']
+            # Add key and value which provided in input put to output file
+            for input_extra_key in obj.keys():
+                if input_extra_key not in output_result.keys():
+                    output_result[input_extra_key] = obj[input_extra_key]
             output_df = pd.DataFrame([output_result])
             output_df.to_csv(output_text_dirpath+str(file_name)+'.csv', index=False)
             return output_result
@@ -266,11 +392,12 @@ class WebsiteCrawler:
 @click.option('--output_file', help='Output file name')
 @click.option('--website_column', default='website', help='input column name')
 @click.option('--use_caching', default=False, help='Should crawler use html cased result')
+@click.option('--crawl_important_link', default=True, help='False if dont want to crawl important link also')
 @click.option('--parser', type=click.Choice(['BeautifulSoup', 'trafilatura', 'dragnet']))
 @click.option('--html_downloader_type', default='get', type=click.Choice(['get', 'selenium']))
 @click.option('--crawl_first_n_website', default=-1)
 
-def start_crawler(nprocesses, input_file, output_file, website_column, use_caching, parser, html_downloader_type, crawl_first_n_website):
+def start_crawler(nprocesses, input_file, output_file, website_column, use_caching, crawl_important_link, parser, html_downloader_type, crawl_first_n_website):
     try:
         start = timer()
         if input_file.endswith('.csv'):
@@ -285,7 +412,7 @@ def start_crawler(nprocesses, input_file, output_file, website_column, use_cachi
         seeds = df.to_dict('records')
         print(f'Total Input unique seeds:{len(seeds)}')
         print(f'Crawling started! using parser:{parser} and HTML Downloder type:{html_downloader_type}')
-        obj = WebsiteCrawler(use_caching, parser, html_downloader_type)
+        obj = WebsiteCrawler(use_caching, parser, html_downloader_type, crawl_important_link)
         pool = multiprocessing.pool.ThreadPool(processes=nprocesses)
         return_list = pool.map(obj.get_website_info, seeds, chunksize=1)
         pool.close()
