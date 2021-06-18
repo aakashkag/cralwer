@@ -163,7 +163,7 @@ class WebsiteCrawler:
                     else:
                         # Link belong to same website
                         if '.' in full_link and (full_link not in internal_links_list):
-                            internal_links_list.append({'link': full_link, 'text': link_text.lower()})
+                            internal_links_list.append({'link': full_link, 'link_text': link_text.lower()})
             result['internal_links'] = internal_links_list
             return result
         except:
@@ -272,20 +272,44 @@ class WebsiteCrawler:
             traceback.print_exc()
             return result
 
+    def crawl_internal_links(self, obj):
+        try:
+            html_downloaded_res = self.html_downloder(obj['link'], self.html_downloader_type)
+            html = html_downloaded_res['text']
+            original_text, parsed_text = self.html_parser(html)  # Change parse here
+            obj['page_text'] = parsed_text
+            return obj
+        except:
+            traceback.print_exc()
+            return obj
+
     def importent_link_identifier(self, links_array, important_link_result):
         try:
+            important_link_result_array = []
             for link_obj in links_array:
-                #print('link_obj-->',link_obj)
                 for key in importent_link_footprint_dict.keys():
                     # if already not predicted
-                    if important_link_result[key]['text'] == '':
-                        is_selected_link = True if link_obj['text'] in importent_link_footprint_dict[key]['text_keywords'] else False
+                    if important_link_result[key]['link_text'] == '':
+                        l1 = set(link_obj['link_text'].split())
+                        l2 = set(importent_link_footprint_dict[key]['text_keywords'])
+                        is_selected_link = False
+                        if len(l1.intersection(l2)) > 0:
+                            is_selected_link = True
                         if is_selected_link:
                             link_tokens = link_obj['link'].split('/')  # breaks response into words
-                            if any(s in importent_link_footprint_dict[key]['link_tokens'] for s in link_tokens) and (importent_link_footprint_dict[key]['must_keyword'] in link_obj['text']):
+                            if any(s in importent_link_footprint_dict[key]['link_tokens'] for s in link_tokens) and (importent_link_footprint_dict[key]['must_keyword'] in link_obj['link_text']):
                                 important_link_result[key]['link'] = link_obj['link']
-                                important_link_result[key]['text'] = link_obj['text']
+                                important_link_result[key]['link_type'] = key
+                                important_link_result[key]['link_text'] = link_obj['link_text']
+                                important_link_result_array.append({'link': link_obj['link'], 'link_type': key})
                                 break
+            # Scrape its pages
+            if len(important_link_result_array) > 0:
+                pool1 = multiprocessing.pool.ThreadPool(processes=4)
+                subpages_dict = pool1.map(self.crawl_internal_links, important_link_result_array, chunksize=1)
+                pool1.close()
+                for res_obj in subpages_dict:
+                    important_link_result[res_obj['link_type']]['page_text'] = res_obj['page_text']
             return important_link_result
         except:
             traceback.print_exc()
@@ -339,10 +363,10 @@ class WebsiteCrawler:
     def get_website_info(self, obj):
         try:
             important_link_result = {
-                'about_us_link': {'link': None, 'text': ''},
-                'service_link': {'link': None, 'text': ''},
-                'product_link': {'link': None, 'text': ''},
-                'overview_link': {'link': None, 'text': ''}
+                'about_us_link': {'link': None, 'link_text': '', 'page_text':''},
+                'service_link': {'link': None, 'link_text': '', 'page_text':''},
+                'product_link': {'link': None, 'link_text': '', 'page_text':''},
+                'overview_link': {'link': None, 'link_text': '', 'page_text':''},
             }
 
             start = timer()
@@ -367,14 +391,15 @@ class WebsiteCrawler:
                 'target_url': result['target_url'],
                 'redirect_history': result['redirect_history']
             }
-            #print('self.crawl_important_link===============>',self.crawl_important_link)
             if self.crawl_important_link and result['html']:
                 all_links_obj = self.get_links(result['html'], domain)
                 # Get important link
                 important_link_result = self.importent_link_identifier(all_links_obj['internal_links'], important_link_result)
                 for key in important_link_result.keys():
                     output_result[key] = important_link_result[key]['link']
-                    output_result[key + '_text'] = important_link_result[key]['text']
+                    output_result[key + 'link_text'] = important_link_result[key]['link_text']
+                    output_result[key + 'page_text'] = important_link_result[key]['page_text']
+
             # Add key and value which provided in input put to output file
             for input_extra_key in obj.keys():
                 if input_extra_key not in output_result.keys():
