@@ -12,6 +12,12 @@ from bs4 import BeautifulSoup
 from bs4.element import Comment
 import tldextract
 import metadata_parser as mdp
+import re, nltk
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+regex = re.compile('[^a-zA-Z]')
+meta_stop = ["com", "home", "inc", "llc", "welcome", "page", "ltd", "en", "www", "wordpress", "org", "click", "logo", "homepage", "amp", "powered"]
+stops = set(stopwords.words('english'))
 from timeit import default_timer as timer
 import pathlib
 from pathlib import Path
@@ -86,12 +92,14 @@ importent_link_footprint_dict = {
 
 class WebsiteCrawler:
 
-    def __init__(self, use_caching, parser, html_downloader_type, crawl_important_link):
+    def __init__(self, website_column, use_caching, parser, html_downloader_type, crawl_important_link, minimum_word_count):
+        self.website_column = website_column
         self.all_results = []
         self.use_caching = use_caching
         self.parser = parser
         self.html_downloader_type = html_downloader_type
         self.crawl_important_link = crawl_important_link
+        self.minimum_word_count = minimum_word_count
         pass
 
     def prepare_file_name(self, text):
@@ -104,6 +112,7 @@ class WebsiteCrawler:
                 text = text.replace('https://','')
                 text = text.replace('http://','')
                 text = text.replace('www.','')
+                text = text.rstrip('//')
                 return text
             else:
                 return text
@@ -158,12 +167,14 @@ class WebsiteCrawler:
                     if (full_link not in processed) and ('www' in full_link or 'http' in full_link):
                         processed.append(full_link)
 
-                    if domain not in full_link:  # It's External links
+                    if domain != self.extract_domain(full_link) or url.rstrip('//') == full_link.rstrip('//'):  # It's External links
+                        print('external urls===>', domain, full_link, self.extract_domain(full_link))
                         full_link = full_link.lower()
                     else:
                         # Link belong to same website
                         if '.' in full_link and (full_link not in internal_links_list):
-                            internal_links_list.append({'link': full_link, 'link_text': link_text.lower()})
+                            internal_links_list.append({'link': full_link.lower(), 'link_text': link_text.lower()})
+            print('internal_links_list-->', internal_links_list)
             result['internal_links'] = internal_links_list
             return result
         except:
@@ -176,6 +187,32 @@ class WebsiteCrawler:
         if isinstance(element, Comment):
             return False
         return True
+
+    def clean_text(self, text):
+        try:
+            text = str(text)
+            if text:
+                text = text.lower().strip()
+                text = re.sub(r'http\S+', '', text)  # remove hyper links
+                text = re.sub('[\w\.]+@[\w\.]+',' ', text)  # Remove email address from text
+                text = re.sub('\W', ' ', text)
+                text = regex.sub(' ', text)
+                token_list = []
+                for token in text.split():
+                    if token not in meta_stop and token not in stops and len(token) > 2:
+                        token_list.append(token)
+                text = ' '.join(token_list)
+        except:
+            print(text)
+            traceback.print_exc()
+        return text
+
+    def text_word_count(self, text):
+        try:
+            tokens = text.split()
+            return len([token for token in tokens if token and len(token) >= 2])
+        except:
+            return 0
 
     def extract_domain(self, url):
         try:
@@ -342,7 +379,7 @@ class WebsiteCrawler:
             html = html_downloaded_res['text']
             redirect_history = html_downloaded_res['redirect_history']
             target_url = html_downloaded_res['target_url']
-            self.save_html(fpath, html)
+            #self.save_html(fpath, html)
         if html:
             original_text, parsed_text = self.html_parser(html)  # Change parse here
             result['html'] = html
@@ -363,14 +400,14 @@ class WebsiteCrawler:
     def get_website_info(self, obj):
         try:
             important_link_result = {
-                'about_us_link': {'link': None, 'link_text': '', 'page_text':''},
-                'service_link': {'link': None, 'link_text': '', 'page_text':''},
-                'product_link': {'link': None, 'link_text': '', 'page_text':''},
-                'overview_link': {'link': None, 'link_text': '', 'page_text':''},
+                'about_us_link': {'link': None, 'link_text': '', 'page_text': '', 'page_clean_text': ''},
+                'service_link': {'link': None, 'link_text': '', 'page_text': '', 'page_clean_text': ''},
+                'product_link': {'link': None, 'link_text': '', 'page_text': '', 'page_clean_text': ''},
+                'overview_link': {'link': None, 'link_text': '', 'page_text': '', 'page_clean_text': ''},
             }
 
             start = timer()
-            url = obj['website']
+            url = obj[self.website_column]
             url = self.prepare_url(url)             # Add protocol if missing
             file_name = self.prepare_file_name(url)  # Use to cache file for reuse
             domain = self.extract_domain(url)
@@ -384,22 +421,48 @@ class WebsiteCrawler:
                 'status_code': result['status_code'],
                 'response_error': result['response_error'],
                 'parsed_text': result['parsed_text'],
+                'parsed_clean_text': self.clean_text(result['parsed_text']),
+                'parsed_text_word_count': self.text_word_count(result['parsed_text']),
                 'original_text': result['original_text'],
                 'parser': self.parser,
                 'html_downloader': self.html_downloader_type,
                 'time_taken': total_time,
                 'target_url': result['target_url'],
-                'redirect_history': result['redirect_history']
+                'redirect_history': result['redirect_history'],
+                'next_link': '',
+                'next_link_text': '',
+                'next_link_clean_text': '',
+                'next_link_clean_text_wordcount': 0
             }
+            output_result['parsed_clean_text_word_count'] = self.text_word_count(output_result['parsed_clean_text'])
+
             if self.crawl_important_link and result['html']:
                 all_links_obj = self.get_links(result['html'], domain)
                 # Get important link
                 important_link_result = self.importent_link_identifier(all_links_obj['internal_links'], important_link_result)
+                #print('important_link_result===>',important_link_result)
+                #print('internal links====>',all_links_obj['internal_links'])
                 for key in important_link_result.keys():
                     output_result[key] = important_link_result[key]['link']
                     output_result[key + 'link_text'] = important_link_result[key]['link_text']
                     output_result[key + 'page_text'] = important_link_result[key]['page_text']
-
+                    output_result[key + 'page_clean_text'] = self.clean_text(important_link_result[key]['page_text'])
+                    output_result[key + 'page_clean_text_word_count'] = self.text_word_count(output_result[key+'page_clean_text'])
+                # Scrap other link pages if word count <30
+                processed = []
+                for next_link_obj in all_links_obj['internal_links']:
+                    if next_link_obj['link'] not in processed:
+                        processed.append(next_link_obj['link'])
+                        next_link_res = self.crawl_internal_links({'link': next_link_obj['link'], 'page_text': None})
+                        if next_link_res['page_text']:
+                            next_link_res['next_link_clean_text'] = self.clean_text(next_link_res['page_text'])
+                            next_link_res['next_link_clean_text_wordcount'] = self.text_word_count(next_link_res['next_link_clean_text'])
+                            if(next_link_res['next_link_clean_text_wordcount'] >= self.minimum_word_count):
+                                output_result['next_link'] = next_link_obj['link']
+                                output_result['next_link_text'] = next_link_res['page_text']
+                                output_result['next_link_clean_text'] = next_link_res['next_link_clean_text']
+                                output_result['next_link_clean_text_wordcount'] = next_link_res['next_link_clean_text_wordcount']
+                                break
             # Add key and value which provided in input put to output file
             for input_extra_key in obj.keys():
                 if input_extra_key not in output_result.keys():
@@ -408,8 +471,8 @@ class WebsiteCrawler:
             output_df.to_csv(output_text_dirpath+str(file_name)+'.csv', index=False)
             return output_result
         except:
-            return obj
             traceback.print_exc()
+            return obj
 
 @click.command()
 @click.option('--nprocesses', default=10, help='Mention number of processes to run in parallel(By default 10 processes)')
@@ -421,8 +484,9 @@ class WebsiteCrawler:
 @click.option('--parser', type=click.Choice(['BeautifulSoup', 'trafilatura', 'dragnet']))
 @click.option('--html_downloader_type', default='get', type=click.Choice(['get', 'selenium']))
 @click.option('--crawl_first_n_website', default=-1)
+@click.option('--minimum_word_count', default=30)
 
-def start_crawler(nprocesses, input_file, output_file, website_column, use_caching, crawl_important_link, parser, html_downloader_type, crawl_first_n_website):
+def start_crawler(nprocesses, input_file, output_file, website_column, use_caching, crawl_important_link, parser, html_downloader_type, crawl_first_n_website, minimum_word_count):
     try:
         start = timer()
         if input_file.endswith('.csv'):
@@ -434,10 +498,12 @@ def start_crawler(nprocesses, input_file, output_file, website_column, use_cachi
         if crawl_first_n_website>-1:
             df = df[0:crawl_first_n_website]
         df[website_column] = df[website_column].str.strip()
+        #df = df[df[website_column] == 'https://www.palmolive.co.uk/']
         seeds = df.to_dict('records')
         print(f'Total Input unique seeds:{len(seeds)}')
+        #print('seeds==>',seeds)
         print(f'Crawling started! using parser:{parser} and HTML Downloder type:{html_downloader_type}')
-        obj = WebsiteCrawler(use_caching, parser, html_downloader_type, crawl_important_link)
+        obj = WebsiteCrawler(website_column, use_caching, parser, html_downloader_type, crawl_important_link, minimum_word_count)
         pool = multiprocessing.pool.ThreadPool(processes=nprocesses)
         return_list = pool.map(obj.get_website_info, seeds, chunksize=1)
         pool.close()
@@ -453,4 +519,4 @@ def start_crawler(nprocesses, input_file, output_file, website_column, use_cachi
 if __name__ == '__main__':
     start_crawler()
 
-#  python3 crawler.py --input_file websites.csv --output_file trafilatura_output --nprocesses 10 --website_column website --parser trafilatura --crawl_first_n_website 100
+#  python3 crawler.py --input_file training_dataset_v2.2_trafilatura_LessText_input.csv --output_file training_dataset_v2.2_trafilatura_LessText_output --nprocesses 10 --website_column target_url_old --parser trafilatura --crawl_first_n_website 20
