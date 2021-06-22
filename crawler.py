@@ -529,7 +529,6 @@ def start_crawler(nprocesses, input_file, output_file, website_column, use_cachi
         if crawl_first_n_website>-1:
             df = df[0:crawl_first_n_website]
         df[website_column] = df[website_column].str.strip()
-        df = df[df[website_column] == 'https://www.shumaker.com/']
         seeds = df.to_dict('records')
         print(f'Total Input unique seeds:{len(seeds)}')
         print(f'Crawling started! using parser:{parser} and HTML Downloder type:{html_downloader_type}')
