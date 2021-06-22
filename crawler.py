@@ -48,6 +48,15 @@ Path(output_text_dirpath).mkdir(parents=True, exist_ok=True)  # Create dir if no
 Path(output_final_dirpath).mkdir(parents=True, exist_ok=True)  # Create dir if not exists
 
 importent_link_footprint_dict = {
+    'service_link': {
+        'text_keywords': [
+            'services', 'our-services', 'products-and-services', 'our products', 'product-tag'
+        ],
+        'link_tokens': [
+            'service', 'services', 'services.html', 'our-services'
+        ],
+        'must_keyword': 'service'
+    },
     'about_us_link': {
         'text_keywords': [
             'product', 'products', 'product-category', 'our-products', 'our-product', 'our product', 'our products',
@@ -58,15 +67,6 @@ importent_link_footprint_dict = {
             'our-products', 'our-product', 'product-tag'
         ],
         'must_keyword': 'about'
-    },
-    'service_link': {
-        'text_keywords': [
-            'services', 'our-services', 'products-and-services', 'our products', 'product-tag'
-        ],
-        'link_tokens': [
-            'service', 'services', 'services.html', 'our-services'
-        ],
-        'must_keyword': 'service'
     },
     'product_link': {
         'text_keywords': [
@@ -168,13 +168,11 @@ class WebsiteCrawler:
                         processed.append(full_link)
 
                     if domain != self.extract_domain(full_link) or url.rstrip('//') == full_link.rstrip('//'):  # It's External links
-                        print('external urls===>', domain, full_link, self.extract_domain(full_link))
                         full_link = full_link.lower()
                     else:
                         # Link belong to same website
                         if '.' in full_link and (full_link not in internal_links_list):
                             internal_links_list.append({'link': full_link.lower(), 'link_text': link_text.lower()})
-            print('internal_links_list-->', internal_links_list)
             result['internal_links'] = internal_links_list
             return result
         except:
@@ -352,6 +350,41 @@ class WebsiteCrawler:
             traceback.print_exc()
             return important_link_result
 
+    def importent_link_identifier_v2(self, links_array, important_link_result):
+        try:
+            important_link_result_array = []
+            for link_obj in links_array:
+                for key in importent_link_footprint_dict.keys():
+                    must_word = key.split('_')[0]
+                    # if already not predicted
+                    if important_link_result[key]['link_text'] == '':
+                        temp = link_obj['link'].replace('https://', '').replace('http://', '')
+                        link_tokens = temp.split('/')  # breaks response into words
+                        found = False
+                        for r in range(len(link_tokens)):
+                            if r > 3:
+                                found = True
+                                break
+                            if must_word in link_tokens[r]:
+                                important_link_result[key]['link'] = link_obj['link']
+                                important_link_result[key]['link_type'] = key
+                                important_link_result[key]['link_text'] = link_obj['link_text']
+                                important_link_result_array.append({'link': link_obj['link'], 'link_type': key})
+                                break
+                        if found:
+                            break
+            # Scrape its pages
+            if len(important_link_result_array) > 0:
+                pool1 = multiprocessing.pool.ThreadPool(processes=4)
+                subpages_dict = pool1.map(self.crawl_internal_links, important_link_result_array, chunksize=1)
+                pool1.close()
+                for res_obj in subpages_dict:
+                    important_link_result[res_obj['link_type']]['page_text'] = res_obj['page_text']
+            return important_link_result
+        except:
+            traceback.print_exc()
+            return important_link_result
+
     def crawling_controller(self, fpath, url, domain):
         result = {'status_code': '', 'parsed_text': '', 'original_text': '', 'response_error': '', 'redirect_history': '', 'target_url': '', 'importent_links_onj':'', 'html': None}
         status_code = None
@@ -439,9 +472,7 @@ class WebsiteCrawler:
             if self.crawl_important_link and result['html']:
                 all_links_obj = self.get_links(result['html'], domain)
                 # Get important link
-                important_link_result = self.importent_link_identifier(all_links_obj['internal_links'], important_link_result)
-                #print('important_link_result===>',important_link_result)
-                #print('internal links====>',all_links_obj['internal_links'])
+                important_link_result = self.importent_link_identifier_v2(all_links_obj['internal_links'], important_link_result)
                 for key in important_link_result.keys():
                     output_result[key] = important_link_result[key]['link']
                     output_result[key + 'link_text'] = important_link_result[key]['link_text']
@@ -498,10 +529,9 @@ def start_crawler(nprocesses, input_file, output_file, website_column, use_cachi
         if crawl_first_n_website>-1:
             df = df[0:crawl_first_n_website]
         df[website_column] = df[website_column].str.strip()
-        #df = df[df[website_column] == 'https://www.palmolive.co.uk/']
+        df = df[df[website_column] == 'https://www.shumaker.com/']
         seeds = df.to_dict('records')
         print(f'Total Input unique seeds:{len(seeds)}')
-        #print('seeds==>',seeds)
         print(f'Crawling started! using parser:{parser} and HTML Downloder type:{html_downloader_type}')
         obj = WebsiteCrawler(website_column, use_caching, parser, html_downloader_type, crawl_important_link, minimum_word_count)
         pool = multiprocessing.pool.ThreadPool(processes=nprocesses)
