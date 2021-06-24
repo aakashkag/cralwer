@@ -430,6 +430,26 @@ class WebsiteCrawler:
             result['target_url'] = target_url
         return result
 
+    def common_link(self, url, important_links):
+        result = True
+        stoptokens = ["career", "hiring", "recruitment", "news", "blog", "contact", "contact-us", "#", "coivd-",
+                      "sitemap", "corona", "term-of-use", "privacy", "cookie-policy", "privacy-policy", "cookies", "login",
+                      "signup", "sign-in", "team", "contact.htm", "employment",'jobs']
+        try:
+            url = url.rstrip('//').lower()
+            if url not in important_links:
+                url = url.replace('https://', '').replace('http://', '')
+                tokens = url.split('/')
+                if len(tokens) > 1:
+                    if len(tokens[1]) > 2:  # To make sure its not country /en /us /ca pages
+                        remaining_link = '/'.join(tokens[1:])
+                        if not any(s in remaining_link for s in stoptokens):
+                            result = False
+            return result
+        except:
+            traceback.print_exc()
+            return result
+
     def get_website_info(self, obj):
         try:
             important_link_result = {
@@ -438,7 +458,6 @@ class WebsiteCrawler:
                 'product_link': {'link': None, 'link_text': '', 'page_text': '', 'page_clean_text': ''},
                 'overview_link': {'link': None, 'link_text': '', 'page_text': '', 'page_clean_text': ''},
             }
-
             start = timer()
             url = obj[self.website_column]
             url = self.prepare_url(url)             # Add protocol if missing
@@ -453,10 +472,9 @@ class WebsiteCrawler:
                 'url': url,
                 'status_code': result['status_code'],
                 'response_error': result['response_error'],
-                'parsed_text': result['parsed_text'],
-                'parsed_clean_text': self.clean_text(result['parsed_text']),
-                'parsed_text_word_count': self.text_word_count(result['parsed_text']),
-                'original_text': result['original_text'],
+                'homepage_text': result['parsed_text'],
+                'homepage_clean_text': self.clean_text(result['parsed_text']),
+                'homepage_original_text': result['original_text'],
                 'parser': self.parser,
                 'html_downloader': self.html_downloader_type,
                 'time_taken': total_time,
@@ -467,13 +485,16 @@ class WebsiteCrawler:
                 'next_link_clean_text': '',
                 'next_link_clean_text_wordcount': 0
             }
-            output_result['parsed_clean_text_word_count'] = self.text_word_count(output_result['parsed_clean_text'])
+            output_result['homepage_text_word_count'] = self.text_word_count(output_result['homepage_clean_text'])
 
             if self.crawl_important_link and result['html']:
                 all_links_obj = self.get_links(result['html'], domain)
                 # Get important link
                 important_link_result = self.importent_link_identifier_v2(all_links_obj['internal_links'], important_link_result)
+                important_links = []
                 for key in important_link_result.keys():
+                    if important_link_result[key]['link']:
+                        important_links.append(important_link_result[key]['link'].rstrip('//').lower())
                     output_result[key] = important_link_result[key]['link']
                     output_result[key + 'link_text'] = important_link_result[key]['link_text']
                     output_result[key + 'page_text'] = important_link_result[key]['page_text']
@@ -484,22 +505,24 @@ class WebsiteCrawler:
                 for next_link_obj in all_links_obj['internal_links']:
                     if next_link_obj['link'] not in processed:
                         processed.append(next_link_obj['link'])
-                        next_link_res = self.crawl_internal_links({'link': next_link_obj['link'], 'page_text': None})
-                        if next_link_res['page_text']:
-                            next_link_res['next_link_clean_text'] = self.clean_text(next_link_res['page_text'])
-                            next_link_res['next_link_clean_text_wordcount'] = self.text_word_count(next_link_res['next_link_clean_text'])
-                            if(next_link_res['next_link_clean_text_wordcount'] >= self.minimum_word_count):
-                                output_result['next_link'] = next_link_obj['link']
-                                output_result['next_link_text'] = next_link_res['page_text']
-                                output_result['next_link_clean_text'] = next_link_res['next_link_clean_text']
-                                output_result['next_link_clean_text_wordcount'] = next_link_res['next_link_clean_text_wordcount']
-                                break
+                        is_common_link_res = self.common_link(next_link_obj['link'], important_links)
+                        if not is_common_link_res:
+                            next_link_res = self.crawl_internal_links({'link': next_link_obj['link'], 'page_text': None})
+                            if next_link_res['page_text']:
+                                next_link_res['next_link_clean_text'] = self.clean_text(next_link_res['page_text'])
+                                next_link_res['next_link_clean_text_wordcount'] = self.text_word_count(next_link_res['next_link_clean_text'])
+                                if(next_link_res['next_link_clean_text_wordcount'] >= self.minimum_word_count):
+                                    output_result['next_link'] = next_link_obj['link']
+                                    output_result['next_link_text'] = next_link_res['page_text']
+                                    output_result['next_link_clean_text'] = next_link_res['next_link_clean_text']
+                                    output_result['next_link_clean_text_wordcount'] = next_link_res['next_link_clean_text_wordcount']
+                                    break
             # Add key and value which provided in input put to output file
             for input_extra_key in obj.keys():
                 if input_extra_key not in output_result.keys():
                     output_result[input_extra_key] = obj[input_extra_key]
             output_df = pd.DataFrame([output_result])
-            output_df.to_csv(output_text_dirpath+str(file_name)+'.csv', index=False)
+            #output_df.to_csv(output_text_dirpath+str(file_name)+'.csv', index=False)
             return output_result
         except:
             traceback.print_exc()
